@@ -1,0 +1,12 @@
+{
+  "name": "hausmeistergo-customer-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "npm run db:migrations:apply && node deploy-initial.mjs",
+    "db:migrations:apply": "wrangler d1 migrations apply DB --remote"
+  },
+  "devDependencies": {
+    "wrangler": "4.167.0"
+  }
+}

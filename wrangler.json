@@ -1,0 +1,17 @@
+{
+  "name": "hausmeistergo-customer",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-09",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "CUSTOMER_LICENSE_REQUIRED": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hausmeistergo-customer",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
