@@ -603,7 +603,29 @@ async function route(request,env){const url=new URL(request.url),path=url.pathna
  if(path==='/customer-setup/status'&&request.method==='GET'){
   if(env.CUSTOMER_LICENSE_REQUIRED!=='true'||env.CUSTOMER_LICENSE_ORIGIN!==url.origin||!env.CUSTOMER_LICENSE_PUBLIC_KEY)throw [404,'Firmenserver-Einrichtung ist hier nicht verfügbar.'];
   const owner=await env.DB.prepare("SELECT 1 AS ready FROM tenant_memberships m JOIN tenants t ON t.id=m.tenant_id JOIN users u ON u.id=m.user_id WHERE m.active=1 AND t.active=1 AND u.active=1 AND m.role IN ('owner','operator','admin') LIMIT 1").first();
-  return json({setupVersion:1,ownerReady:owner?.ready===1});
+  const ownerReady=owner?.ready===1;
+  return json({setupVersion:1,ownerReady,...(!ownerReady&&/^[a-f0-9]{64}$/.test(String(env.CUSTOMER_SETUP_TOKEN_SHA256||''))?{ownerSetupEnabled:true}:{})});
+ }
+ if(path==='/customer-setup/owner'&&request.method==='POST'){
+  const setupDigest=String(env.CUSTOMER_SETUP_TOKEN_SHA256||'');
+  if(env.CUSTOMER_LICENSE_REQUIRED!=='true'||env.CUSTOMER_LICENSE_ORIGIN!==url.origin||!env.CUSTOMER_LICENSE_PUBLIC_KEY||!/^[a-f0-9]{64}$/.test(setupDigest))throw [404,'Geführte Ersteinrichtung ist hier nicht verfügbar.'];
+  const authorization=request.headers.get('authorization')||'';
+  const token=authorization.match(/^Bearer ([A-Za-z0-9_-]{32,128})$/)?.[1];
+  if(!token)throw [403,'Einrichtungscode ungültig.'];
+  const suppliedDigest=await sha256(token);
+  let difference=0;
+  for(let index=0;index<setupDigest.length;index++)difference|=suppliedDigest.charCodeAt(index)^setupDigest.charCodeAt(index);
+  if(difference!==0)throw [403,'Einrichtungscode ungültig.'];
+  const data=await readBody(request),company=String(data.companyName||'').trim(),email=normalizeEmail(data.email),password=String(data.password||'');
+  if(!company||company.length>160||email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<12||password.length>256)throw [400,'Firmenname, gültige E-Mail-Adresse und ein Passwort mit 12 bis 256 Zeichen erforderlich.'];
+  const tenantId=crypto.randomUUID(),now=Date.now(),salt=random(24),passwordHash=await pbkdf(password,salt);
+  const [tenant]=await env.DB.batch([
+   env.DB.prepare('INSERT INTO tenants(id,name,active,created_at) SELECT ?,?,1,? WHERE NOT EXISTS(SELECT 1 FROM tenants) AND NOT EXISTS(SELECT 1 FROM users)').bind(tenantId,company,now),
+   env.DB.prepare("INSERT INTO users(id,name,role,salt,password_hash,active,created_at) SELECT ?,'Firmeninhaber','operator',?,?,1,? FROM tenants WHERE id=?").bind(email,salt,passwordHash,now,tenantId),
+   env.DB.prepare("INSERT INTO tenant_memberships(tenant_id,user_id,role,active,created_at) SELECT id,?,'operator',1,? FROM tenants WHERE id=?").bind(email,now,tenantId)
+  ]);
+  if(tenant.meta.changes!==1)throw [409,'Dieser Firmenserver ist bereits eingerichtet.'];
+  return json({ownerReady:true},201);
  }
  if(path==='/health')return json({ok:true,service:'HausmeisterGo Sync',costMode:'free-hard-limit',translationReady:!!env.AI});
  if(path==='/public/product-packages'&&request.method==='GET'){
