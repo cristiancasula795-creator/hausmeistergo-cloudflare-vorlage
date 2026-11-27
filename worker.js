@@ -123,7 +123,7 @@ const capabilities = env => ({...CAPABILITIES,pushV1:true,pushReady:pushReady(en
 async function operatorSystemStatus(env,now=Date.now()){
  let database=false;
  try{const row=await env.DB.prepare('SELECT 1 AS ok').first();database=Number(row?.ok)===1;}catch{}
- return {server:true,database,email:accountEmailReady(env),translation:!!env.AI,backup:backupConfigurationStatus(env),productPackages:{configured:productPackagesConfigured(env)},checkedAt:new Date(now).toISOString()};
+ return {server:true,database,email:accountEmailReady(env),push:pushReady(env),translation:!!env.AI,backup:backupConfigurationStatus(env),productPackages:{configured:productPackagesConfigured(env)},checkedAt:new Date(now).toISOString()};
 }
 async function systemNoticeRow(env){try{return await env.DB.prepare('SELECT active,severity,title,message,starts_at,ends_at,updated_at FROM system_notice WHERE id=1').first();}catch{return null;}}
 const systemNoticeConfig=row=>row?{active:Number(row.active)===1,severity:String(row.severity||'info'),title:String(row.title||''),message:String(row.message||''),startsAt:Number(row.starts_at||0),endsAt:Number(row.ends_at||0),updatedAt:Number(row.updated_at||0)}:{active:false,severity:'info',title:'',message:'',startsAt:0,endsAt:0,updatedAt:0};
@@ -604,7 +604,7 @@ async function route(request,env){const url=new URL(request.url),path=url.pathna
   if(env.CUSTOMER_LICENSE_REQUIRED!=='true'||env.CUSTOMER_LICENSE_ORIGIN!==url.origin||!env.CUSTOMER_LICENSE_PUBLIC_KEY)throw [404,'Firmenserver-Einrichtung ist hier nicht verfügbar.'];
   const owner=await env.DB.prepare("SELECT 1 AS ready FROM tenant_memberships m JOIN tenants t ON t.id=m.tenant_id JOIN users u ON u.id=m.user_id WHERE m.active=1 AND t.active=1 AND u.active=1 AND m.role IN ('owner','operator','admin') LIMIT 1").first();
   const ownerReady=owner?.ready===1;
-  return json({setupVersion:1,ownerReady,...(!ownerReady&&/^[a-f0-9]{64}$/.test(String(env.CUSTOMER_SETUP_TOKEN_SHA256||''))?{ownerSetupEnabled:true}:{})});
+  return json({setupVersion:1,ownerReady,pushConfigured:pushReady(env),...(!ownerReady&&/^[a-f0-9]{64}$/.test(String(env.CUSTOMER_SETUP_TOKEN_SHA256||''))?{ownerSetupEnabled:true}:{})});
  }
  if(path==='/customer-setup/owner'&&request.method==='POST'){
   const setupDigest=String(env.CUSTOMER_SETUP_TOKEN_SHA256||'');
